@@ -1,0 +1,206 @@
+#!/bin/sh
+
+MT_DRV="MT7630E_Wi-Fi_BT_Source_V3.14_20140625_v2.tar.gz"
+DEP_DRV="rt2870.tar.gz"
+ETC_DIR="/etc/mt7630e"
+TMP_DIR="tmp"
+
+# ==============================================================================
+
+CURRENT_DIR=$(realpath .)
+DIR=$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)
+
+DEP_DRV=$(realpath $DIR/src/$DEP_DRV)
+MT_DRV=$(realpath $DIR/src/$MT_DRV)
+TMP_DIR=$(realpath $DIR/$TMP_DIR)
+
+rt2x_modules=(
+    "rt2x00lib"
+    "rt2x00pci"
+    "rt2x00mmio"
+    "rt2800lib"
+    "rt2800pci"
+)
+
+# ------------------------------------------------------------------------------
+
+function install {
+
+    disable
+
+    enable_dependencies
+
+    echo "Removing previous install..."
+
+    rm -rf $TMP_DIR 2> /dev/null
+    mkdir -p $TMP_DIR
+
+    echo "Extracting TAR source..."
+
+    cd $TMP_DIR
+    tar -xf $MT_DRV
+
+    tmp_mt_dir=$(realpath $TMP_DIR/MT7630E_*)
+
+    echo "Patching with latest kernel corrections..."
+    patch --strip=1 --directory=$tmp_mt_dir --input=$DIR/src/mt7630e.patch
+
+    echo "Copying firmwares to </lib/firmware>..."
+
+    cp $tmp_mt_dir/firmware/BT/mt76x0.bin /lib/firmware
+    # cp $tmp_mt_dir/firmware/Wi-FI/MT7650E234.bin /lib/firmware
+
+    echo "Make Wi-Fi driver (rt2x00)..."
+
+    rm -rf $ETC_DIR 2> /dev/null
+    mkdir $ETC_DIR
+    cp -r $tmp_mt_dir/* $ETC_DIR
+    cd $ETC_DIR/rt2x00
+
+    make clean
+    make -s
+
+    chmod -R 777 $ETC_DIR
+
+    # echo "Copying modules to <$ETC_DIR>..."
+
+    # rm -rf $ETC_DIR 2> /dev/null
+    # mkdir $ETC_DIR
+    # cp -r ./ $ETC_DIR
+
+    # echo "Make BT driver (btloader)..."
+
+    # cd $tmp_mt_dir/btloader
+    # make clean
+    # make
+
+    # echo "Insert module into kernel..."
+
+    # if [[ $(lsmod | grep ^mt76xx) ]]; then
+    #     echo "  - Module <$mod_name> is already loaded. Unloading..."
+    #     rmmod $mod_name
+    # fi
+
+    # echo "Loading module <mt76xx> into kernel..."
+    # insmod ./mt76xx.ko
+
+    echo "Cleaning..."
+
+    # rm -rf $TMP_DIR
+
+    cd $CURRENT_DIR
+
+    enable
+
+    echo "Done."
+
+}
+
+# ------------------------------------------------------------------------------
+
+function enable {
+
+    disable
+
+    enable_dependencies
+
+    for mod in "${rt2x_modules[@]}"; do
+        mod_path="$ETC_DIR/rt2x00/$mod.ko"
+        mod_name="$mod"
+
+        echo "Loading module <$mod> into kernel..."
+        insmod $mod_path
+    done
+
+}
+
+function disable {
+
+    for (( idx=${#rt2x_modules[@]}-1 ; idx>=0 ; idx-- )) ; do
+        mod_path="$ETC_DIR/${rt2x_modules[idx]}.ko"
+        mod_name="${rt2x_modules[idx]}"
+
+        if [[ $(lsmod | grep ^$mod_name) ]]; then
+            echo "INFO: Module <$mod_name> is already loaded. Unloading..."
+            rmmod $mod_name
+        fi
+    done
+
+}
+
+# ------------------------------------------------------------------------------
+
+function install_dependencies {
+
+    echo "Extracting TAR source..."
+
+    rm -rf $TMP_DIR 2> /dev/null
+    mkdir $TMP_DIR
+
+    cd $TMP_DIR
+    tar -xf $DEP_DRV
+    cd rt2870
+    tar -xf 2010_*.tar.bz2
+    cd 2010_*
+
+    echo "Patching with latest kernel corrections..."
+    patch --strip=1 --input=$DIR/src/rt2870.patch
+
+    make -s
+    make install
+
+    enable_dependencies
+
+    echo "Done."
+
+}
+
+# ------------------------------------------------------------------------------
+
+function enable_dependencies {
+
+    kernel_dir=/lib/modules/$(uname -r)/kernel
+
+    modules=(
+        "drivers/misc/eeprom/eeprom.ko.xz"
+        "drivers/misc/eeprom/eeprom_93cx6.ko.xz"
+        "lib/crc-ccitt.ko.xz"
+        "net/wireless/cfg80211.ko.xz"
+        "net/mac80211/mac80211.ko.xz"
+    )
+
+    for (( idx=${#modules[@]}-1 ; idx>=0 ; idx-- )) ; do
+        mod_path=$kernel_dir/${modules[idx]}
+        mod_name=$(echo ${modules[idx]} | sed s/-/_/g | sed s/^.*\\/// | sed s/\.ko\.xz\$//)
+
+        if [[ $(lsmod | grep ^$mod_name) ]]; then
+            echo "INFO: Module <$mod_name> is already loaded. Unloading..."
+            rmmod $mod_name
+        fi
+    done
+
+    for mod in "${modules[@]}"; do
+        mod_path=$kernel_dir/$mod
+        mod_name=$(echo $mod | sed s/-/_/g | sed s/^.*\\/// | sed s/\.ko\.xz\$//)
+
+        echo "Loading module <$mod_name> into kernel..."
+        insmod $mod_path
+    done
+
+}
+
+# ------------------------------------------------------------------------------
+
+function usage {
+    echo "Usage:"
+    echo "  $ install [install | enable | dependencies]"
+    exit 0
+}
+
+# ------------------------------------------------------------------------------
+
+[[ ! $1 ]] && usage
+
+$1
+
+# ==============================================================================

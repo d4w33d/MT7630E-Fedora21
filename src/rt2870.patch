@@ -1,0 +1,37 @@
+diff -U 3 -b -B -d -p -r a/include/os/rt_linux.h b/include/os/rt_linux.h
+--- a/include/os/rt_linux.h	2010-07-09 04:13:47.000000000 +0200
++++ b/include/os/rt_linux.h	2015-04-06 11:55:28.160015564 +0200
+@@ -272,8 +272,8 @@ typedef struct file* RTMP_OS_FD;
+ 
+ typedef struct _RTMP_OS_FS_INFO_
+ {
+-	int				fsuid;
+-	int				fsgid;
++	kuid_t				fsuid;
++	kgid_t				fsgid;
+ 	mm_segment_t	fs;
+ }RTMP_OS_FS_INFO;
+ 
+@@ -1074,8 +1074,8 @@ typedef struct usb_device_id USB_DEVICE_
+ #define RT28XX_PUT_DEVICE													usb_put_dev
+ #define RTUSB_ALLOC_URB(iso)												usb_alloc_urb(iso, GFP_ATOMIC)
+ #define RTUSB_SUBMIT_URB(pUrb)												usb_submit_urb(pUrb, GFP_ATOMIC)
+-#define RTUSB_URB_ALLOC_BUFFER(pUsb_Dev, BufSize, pDma_addr)				usb_buffer_alloc(pUsb_Dev, BufSize, GFP_ATOMIC, pDma_addr)
+-#define RTUSB_URB_FREE_BUFFER(pUsb_Dev, BufSize, pTransferBuf, Dma_addr)	usb_buffer_free(pUsb_Dev, BufSize, pTransferBuf, Dma_addr)
++#define RTUSB_URB_ALLOC_BUFFER(pUsb_Dev, BufSize, pDma_addr)				usb_alloc_coherent(pUsb_Dev, BufSize, GFP_ATOMIC, pDma_addr)
++#define RTUSB_URB_FREE_BUFFER(pUsb_Dev, BufSize, pTransferBuf, Dma_addr)	usb_free_coherent(pUsb_Dev, BufSize, pTransferBuf, Dma_addr)
+ #else
+ 
+ #define RT28XX_PUT_DEVICE													rausb_put_dev
+diff -U 3 -b -B -d -p -r a/os/linux/sta_ioctl.c b/os/linux/sta_ioctl.c
+--- a/os/linux/sta_ioctl.c	2010-07-09 04:13:47.000000000 +0200
++++ b/os/linux/sta_ioctl.c	2015-04-06 11:50:15.010668628 +0200
+@@ -1827,7 +1827,7 @@ rt_private_show(struct net_device *dev,
+             wrq->length = strlen(extra) + 1; // 1: size of '\0'
+             break;
+         case SHOW_DRVIER_VERION:
+-            sprintf(extra, "Driver version-%s, %s %s\n", STA_DRIVER_VERSION, __DATE__, __TIME__ );
++            sprintf(extra, "Driver version-%s, %s %s\n", STA_DRIVER_VERSION, NULL, NULL );
+             wrq->length = strlen(extra) + 1; // 1: size of '\0'
+             break;
+ #ifdef DOT11_N_SUPPORT
